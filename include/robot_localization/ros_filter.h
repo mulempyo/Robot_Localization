@@ -50,6 +50,7 @@
 #include <geometry_msgs/TwistWithCovarianceStamped.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/AccelWithCovarianceStamped.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/message_filter.h>
@@ -144,6 +145,8 @@ template<class T> class RosFilter
     //! @return boolean true if successful, false if not
     bool toggleFilterProcessingCallback(robot_localization::ToggleFilterProcessing::Request&,
                                         robot_localization::ToggleFilterProcessing::Response&);
+
+   void safeCallback(const geometry_msgs::PoseStamped::ConstPtr &msg);
 
     //! @brief Callback method for receiving all acceleration (IMU) messages
     //! @param[in] msg - The ROS IMU message to take in.
@@ -480,6 +483,8 @@ template<class T> class RosFilter
     //!
     bool silentTfFailure_;
 
+    bool modify;
+
     //! @brief The max (worst) dynamic diagnostic level.
     //!
     int dynamicDiagErrorLevel_;
@@ -610,6 +615,8 @@ template<class T> class RosFilter
     //!
     geometry_msgs::TransformStamped worldBaseLinkTransMsg_;
 
+    geometry_msgs::PoseWithCovarianceStamped safe_mode;
+
     //! @brief last call of periodicUpdate
     //!
     ros::Time lastDiagTime_;
@@ -682,6 +689,8 @@ template<class T> class RosFilter
     //!
     ros::Publisher positionPub_;
 
+    ros::Publisher safe_pub_;
+
     //! @brief Subscribes to the control input topic
     //!
     ros::Subscriber controlSub_;
@@ -690,6 +699,8 @@ template<class T> class RosFilter
     //! type is geometry_msgs/PoseWithCovarianceStamped.
     //!
     ros::Subscriber setPoseSub_;
+
+    ros::Subscriber safe_sub_;
 
     //! @brief Service that allows another node to enable the filter. Uses a standard Empty service.
     //!

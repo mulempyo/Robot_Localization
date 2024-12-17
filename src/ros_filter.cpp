@@ -36,6 +36,8 @@
 #include "robot_localization/ukf.h"
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <std_msgs/Float64.h>
+#include <geometry_msgs/PoseStamped.h>
 
 #include <algorithm>
 #include <map>
@@ -1018,6 +1020,10 @@ namespace RobotLocalization
                                 &RosFilter<T>::setPoseCallback,
                                 this, ros::TransportHints().tcpNoDelay(false));
 
+    safe_sub_ = nh_.subscribe("/safe_mode", 1, &RosFilter<T>::safeCallback, this);
+    
+    safe_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("/safe",10);
+
     // Create a service for manually setting/resetting pose
     setPoseSrv_ = nh_.advertiseService("set_pose", &RosFilter<T>::setPoseSrvCallback, this);
 
@@ -1707,6 +1713,14 @@ namespace RobotLocalization
       filter_.setEstimateErrorCovariance(initialEstimateErrorCovariance);
     }
   }
+  
+  template<typename T>
+  void RosFilter<T>::safeCallback(const geometry_msgs::PoseStamped::ConstPtr &msg){
+    ROS_WARN("in safeCallback in robot_localization");
+    safe_mode.pose.pose = msg->pose;
+
+    modify = true;
+  }
 
   template<typename T>
   void RosFilter<T>::odometryCallback(const nav_msgs::Odometry::ConstPtr &msg, const std::string &topicName,
@@ -1736,11 +1750,28 @@ namespace RobotLocalization
       // Grab the pose portion of the message and pass it to the poseCallback
       geometry_msgs::PoseWithCovarianceStamped *posPtr = new geometry_msgs::PoseWithCovarianceStamped();
       posPtr->header = msg->header;
-      posPtr->pose = msg->pose;  // Entire pose object, also copies covariance
+      if(modify){
+        ROS_WARN("in modify in robot_localization");
+      posPtr->pose.pose.position.x += safe_mode.pose.pose.position.x;
+      posPtr->pose.pose.position.y += safe_mode.pose.pose.position.y;
+      posPtr->pose.pose.position.z += safe_mode.pose.pose.position.z;
 
-      geometry_msgs::PoseWithCovarianceStampedConstPtr pptr(posPtr);
-      poseCallback(pptr, poseCallbackData, worldFrameId_, false);
-    }
+      tf2::Quaternion q1, q2, q_result;
+      tf2::fromMsg(posPtr->pose.pose.orientation, q1);
+      tf2::fromMsg(safe_mode.pose.pose.orientation, q2);
+      q_result = q1 * q2;
+      posPtr->pose.pose.orientation = tf2::toMsg(q_result);
+
+      for(int i = 0; i < 36; ++i){
+          posPtr->pose.covariance[i] += safe_mode.pose.covariance[i];
+      }
+
+      }else{
+        posPtr->pose = msg->pose;
+      }
+       geometry_msgs::PoseWithCovarianceStampedConstPtr pptr(posPtr);
+       poseCallback(pptr, poseCallbackData, worldFrameId_, false);
+      }
 
     if (twistCallbackData.updateSum_ > 0)
     {
@@ -1755,6 +1786,13 @@ namespace RobotLocalization
     }
 
     RF_DEBUG("\n----- /RosFilter::odometryCallback (" << topicName << ") ------\n");
+
+    if(modify){
+    std_msgs::Float64 i;
+    i.data = -1;
+    safe_pub_.publish(i);
+    modify = false;
+  }
   }
 
   template<typename T>
